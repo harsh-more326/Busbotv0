@@ -50,8 +50,8 @@ export default function Home() {
               <CardDescription className="text-center">View your assigned routes and schedules</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center">
-              <Link href="/worker/dashboard">
-                <Button size="lg">Worker Dashboard</Button>
+              <Link href="/login">
+                <Button size="lg">Login</Button>
               </Link>
             </CardContent>
           </Card>
@@ -65,8 +65,8 @@ export default function Home() {
               <CardDescription className="text-center">Manage stops, routes, and worker schedules</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center">
-              <Link href="/admin/dashboard">
-                <Button size="lg">Admin Dashboard</Button>
+              <Link href="/login">
+                <Button size="lg">Login</Button>
               </Link>
             </CardContent>
           </Card>
@@ -81,4 +81,3 @@ export default function Home() {
     </div>
   )
 }
-

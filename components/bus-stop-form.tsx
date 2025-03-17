@@ -31,9 +31,9 @@ export interface BusStop {
 }
 
 // Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bukreajcgmujspiuintq.supabase.co'
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1a3JlYWpjZ211anNwaXVpbnRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA4NjYzNzMsImV4cCI6MjA1NjQ0MjM3M30.33_osf3Q4SPIm2om1pRrZNIHor1_DlpWrW3-rkAopr8'
-const supabase = createClient(supabaseUrl, supabaseKey)
+const supabaseUrl = 'https://vouxrjvgsishauzfqlyz.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvdXhyanZnc2lzaGF1emZxbHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc2OTIyNzksImV4cCI6MjA1MzI2ODI3OX0.7FQ8Iifb4_8j39lpK9ckYjqnxjifGCCxAr73HhHJUfE'
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export function BusStopManager() {
   // Form state

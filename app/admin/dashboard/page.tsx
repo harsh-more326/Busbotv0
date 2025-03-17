@@ -21,6 +21,7 @@ import { GlowingBorder } from "@/components/ui/glowing-border"
 import { MagneticButton } from "@/components/ui/magnetic-button"
 import { TextSpotlight } from "@/components/ui/text-spotlight"
 import { ParticleBackground } from "@/components/ui/particle-background"
+import OptimizedRouteDisplay from "@/components/OptimizedRouteDisplay"
 
 export default function AdminDashboard() {
   const [stops, setStops] = useLocalStorage<BusStop[]>("bus-stops", busStops)
@@ -161,6 +162,9 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="routes" className="fade-in">
+            <OptimizedRouteDisplay/>
+          </TabsContent>
+          {/* <TabsContent value="routes" className="fade-in">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -246,9 +250,11 @@ export default function AdminDashboard() {
                 </div>
               </div>
               
-              <RouteGenerator onRoutesGenerated={handleRoutesGenerated} />
+              
             </div>
-          </TabsContent>
+          </TabsContent> */}
+          {/* // Route Displayer Ends Here  */}
+
 
           <TabsContent value="workers" className="fade-in">
             <WorkerManager />

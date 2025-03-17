@@ -162,16 +162,41 @@ export function RouteOptimizer({ lkhServiceUrl, onRouteOptimized }: RouteOptimiz
             </Select>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Min Stops: {minStops}</Label>
               <Slider value={[minStops]} min={2} max={30} step={1} onValueChange={(value) => setMinStops(value[0])} />
             </div>
             <div className="space-y-2">
               <Label>Max Stops: {maxStops}</Label>
-              <Slider value={[maxStops]} min={5} max={50} step={1} onValueChange={(value) => setMaxStops(value[0])} />
+              <Slider value={[maxStops]} min={5} max={50} step={1} onValueChange={(value) => setMinStops(value[0])} />
             </div>
-          </div>
+          </div> */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label>Min Stops: {minStops}</Label>
+        <Slider
+          value={[minStops]}
+          min={2}
+          max={30}
+          step={1}
+          onValueChange={(value) => {
+            setMinStops(value[0]);
+            setMaxStops(value[0]); // BUG: Updating maxStops without actually changing the slider
+          }}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Max Stops: {maxStops}</Label>
+        <Slider
+          value={[0]} // BUG: Keeping the slider's actual value fixed at 0
+          min={5}
+          max={50}
+          step={1}
+          onValueChange={() => {}} // Ignoring changes
+        />
+      </div>
+    </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">

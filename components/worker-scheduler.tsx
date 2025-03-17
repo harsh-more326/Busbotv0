@@ -39,7 +39,7 @@ export function WorkerScheduler() {
     Promise.all([
       supabase.from("workers").select("*").order("name"),
       supabase.from("optimized_routes").select("*").order("name"),
-      supabase.from("worker_schedules").select("*, workers!worker_schedules_worker_single_fk(*), optimized_routes(*)").order("date"),
+      supabase.from("schedule").select("*, workers(*), optimized_routes(*)").order("date"),
     ])
       .then(([workersResponse, routesResponse, schedulesResponse]) => {
         if (workersResponse.error) throw workersResponse.error
@@ -105,14 +105,14 @@ export function WorkerScheduler() {
     try {
       // Create new schedule
       const { data, error } = await supabase
-        .from("worker_schedules")
+        .from("schedule")
         .insert({
           date,
           worker_id: workerId,
           route_id: routeId,
           shift: shiftId
         })
-        .select("*, workers!worker_schedules_worker_id_fkey(*), optimized_routes(*)")
+        .select("*, workers(*), optimized_routes(*)")
 
       if (error) {
         console.error("Error adding schedule:", error)
@@ -150,7 +150,7 @@ export function WorkerScheduler() {
     setLoading(true)
 
     try {
-      const { error } = await supabase.from("worker_schedules").delete().eq("id", id)
+      const { error } = await supabase.from("schedule").delete().eq("id", id)
 
       if (error) throw error
 

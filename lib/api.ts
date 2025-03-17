@@ -8,6 +8,36 @@ export async function getBusStops(): Promise<BusStop[]> {
   return data || []
 }
 
+/**
+ * Saves multiple optimized bus routes to the backend
+ * @param {OptimizedRoute[]} routes - Array of bus routes to save
+ * @returns {Promise<OptimizedRoute[]>} - The saved routes with their IDs
+ */
+export const saveOptimizedRoutes = async (routes: OptimizedRoute[]): Promise<OptimizedRoute[]> => {
+  try {
+    // Ensure all routes have a valid stops array
+    const validatedRoutes = routes.map(route => ({
+      ...route,
+      stops: Array.isArray(route.stops) ? route.stops : [],
+    }))
+    
+    // Modified to use direct Supabase call instead of fetch API
+    const { data, error } = await supabase
+      .from("optimized_routes")
+      .insert(validatedRoutes)
+      .select()
+    
+    if (error) {
+      throw new Error(`Error saving optimized routes: ${error.message}`);
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error("Error in saveOptimizedRoutes:", error);
+    throw error;
+  }
+};
+
 // Fetch all depots from the database
 export async function getDepots(): Promise<Depot[]> {
   const { data, error } = await supabase.from("depots").select("*").order("name")
@@ -15,12 +45,19 @@ export async function getDepots(): Promise<Depot[]> {
   return data || []
 }
 
-// Fetch optimized routes from the database
+// Fetch optimized routes from the database with proper stops handling
 export async function getOptimizedRoutes(): Promise<OptimizedRoute[]> {
-  // Remove the order by created_at since that column doesn't exist in the table
   const { data, error } = await supabase.from("optimized_routes").select("*")
+  
   if (error) throw error
-  return data || []
+  
+  // Ensure all routes have valid stops arrays
+  const validatedRoutes = data?.map(route => ({
+    ...route,
+    stops: Array.isArray(route.stops) ? route.stops : [],
+  })) || []
+  
+  return validatedRoutes
 }
 
 // Get routes (avoiding duplicate functionality with getOptimizedRoutes)
@@ -42,14 +79,57 @@ export async function addDepot(depot: Omit<Depot, "id">): Promise<Depot> {
   return data
 }
 
-// Add a new route to the database (renamed from addRoute to avoid confusion with saveOptimizedRoute)
+// Add a single route to the database with proper stops validation
 export async function addRoute(route: Omit<OptimizedRoute, "id">): Promise<OptimizedRoute> {
-  return await saveOptimizedRoute(route)
+  // Ensure stops is a valid array
+  const validatedRoute = {
+    ...route,
+    stops: Array.isArray(route.stops) ? route.stops : [],
+  }
+  
+  const { data, error } = await supabase
+    .from("optimized_routes")
+    .insert(validatedRoute)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data
 }
 
-// Save an optimized route to the database
+// Save a single optimized route to the database (fixed version)
 export async function saveOptimizedRoute(route: Omit<OptimizedRoute, "id">): Promise<OptimizedRoute> {
-  const { data, error } = await supabase.from("optimized_routes").insert(route).select().single()
+  // Ensure stops is a valid array
+  const validatedRoute = {
+    ...route,
+    stops: Array.isArray(route.stops) ? route.stops : [],
+  }
+  
+  const { data, error } = await supabase
+    .from("optimized_routes")
+    .insert(validatedRoute)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data
+}
+
+// Update an existing route with proper stops validation
+export async function updateRoute(id: string, route: Partial<OptimizedRoute>): Promise<OptimizedRoute> {
+  // Ensure stops is a valid array if it exists in the update
+  const validatedUpdate = {
+    ...route,
+    ...(route.stops !== undefined && { stops: Array.isArray(route.stops) ? route.stops : [] }),
+  }
+  
+  const { data, error } = await supabase
+    .from("optimized_routes")
+    .update(validatedUpdate)
+    .eq("id", id)
+    .select()
+    .single()
+  
   if (error) throw error
   return data
 }
@@ -112,14 +192,57 @@ export async function getWorkerSchedules(): Promise<WorkerSchedule[]> {
   })) ?? [];
 }
 
-
-
-
-
 export async function addWorkerSchedule(schedule: Omit<WorkerSchedule, "id">): Promise<WorkerSchedule> {
   const { data, error } = await supabase.from("worker_schedules").insert(schedule).select().single()
   if (error) throw error
   return data
+}
+
+// Function to convert waypoints to bus stops format
+export async function convertWaypointsToBusStops(waypoints: any[]): Promise<BusStop[]> {
+  try {
+    const busStops = waypoints.map((waypoint, index) => ({
+      id: waypoint.id,
+      name: `Stop ${index + 1}`,
+      latitude: waypoint.lat,
+      longitude: waypoint.lng,
+      priority: 1, // Default priority
+      is_active: true
+    }));
+    
+    return busStops;
+  } catch (error) {
+    console.error("Error converting waypoints to bus stops:", error);
+    throw error;
+  }
+}
+
+// Function to import waypoints directly into bus_stops table
+export async function importWaypointsAsBusStops(waypoints: any[]): Promise<BusStop[]> {
+  try {
+    const busStops = waypoints.map((waypoint, index) => ({
+      name: `Stop ${index + 1}`,
+      latitude: waypoint.lat,
+      longitude: waypoint.lng,
+      priority: 1,
+      is_active: true,
+      external_id: waypoint.id // Store original waypoint ID in external_id
+    }));
+    
+    const { data, error } = await supabase
+      .from("bus_stops")
+      .insert(busStops)
+      .select();
+    
+    if (error) {
+      throw new Error(`Error importing waypoints as bus stops: ${error.message}`);
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error("Error importing waypoints:", error);
+    throw error;
+  }
 }
 
 // Call the LKH algorithm service
@@ -188,5 +311,3 @@ export function estimateTravelTime(distance: number): number {
   // Assuming average speed of 30 km/h in urban areas
   return Math.round((distance / 30) * 60) // Time in minutes
 }
-
-

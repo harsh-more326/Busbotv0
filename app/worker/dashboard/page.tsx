@@ -1,168 +1,185 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Home, LogOut, Calendar, AlertCircle } from "lucide-react"
+import { Home, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
-import type { WorkerSchedule } from "@/lib/types"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/components/ui/use-toast"
 
 export default function WorkerDashboard() {
-  // In a real app, this would come from authentication
-  const workerId = "worker-1" // Placeholder worker ID
-  const [workerSchedule, setWorkerSchedule] = useState<WorkerSchedule[]>([])
+  const searchParams = useSearchParams()
+  const workerId = searchParams.get("worker_id") // 🔹 Get worker ID from URL
+  const [worker, setWorker] = useState(null)
+  const [workerSchedule, setWorkerSchedule] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState(null)
   const { toast } = useToast()
 
   useEffect(() => {
-    const fetchSchedule = async () => {
+    if (!workerId) {
+      setError("Worker ID is missing in the URL.")
+      setLoading(false)
+      return
+    }
+
+    const fetchWorkerDetails = async () => {
+      setError(null)
+
+      // 🔹 Fetch worker details using workerId
+      const { data: workerData, error: workerError } = await supabase
+        .from("workers")
+        .select("id, name, phone_number, role")
+        .eq("id", workerId)
+        .single()
+
+      if (workerError || !workerData) {
+        setError("Worker details not found.")
+        return
+      }
+
+      setWorker(workerData)
+      fetchSchedule(workerData.id)
+    }
+
+    const fetchSchedule = async (workerId) => {
       setLoading(true)
       setError(null)
-  
+
       try {
-        // Using eq filter to only get schedules for this specific worker
         const { data, error } = await supabase
-          .from("worker_schedules")
-          .select("*, workers!worker_schedules_worker_id_fkey(*), optimized_routes(*)")
-          .eq("worker_id", workerId) // Filter for this specific worker
+          .from("schedule")
+          .select("*, optimized_routes(*)")
+          .eq("worker_id", workerId)
           .order("date")
-  
+
         if (error) {
-          console.error("Error loading data:", error)
-          setError("Failed to load your schedule. Please try again later.")
-          toast({
-            title: "Error",
-            description: "Could not load your schedule",
-            variant: "destructive",
-          })
+          setError("Failed to load schedule.")
+          toast({ title: "Error", description: "Could not load your schedule", variant: "destructive" })
           return
         }
-  
+
         setWorkerSchedule(data || [])
       } catch (error) {
-        console.error("Error fetching worker schedule:", error)
-        setError("An unexpected error occurred. Please try again later.")
+        setError("Unexpected error occurred.")
       } finally {
         setLoading(false)
       }
     }
-  
-    fetchSchedule()
-  }, [workerId, toast])
-  
-  const shifts = {
-    morning: "Morning (6:00 AM - 2:00 PM)",
-    afternoon: "Afternoon (2:00 PM - 10:00 PM)",
-    night: "Night (10:00 PM - 6:00 AM)",
-  }
 
-  const formatDate = (dateString: string) => {
+    fetchWorkerDetails()
+  }, [workerId, toast])
+
+  // 🔹 Handle View Route Function
+  const handleViewRoute = (route) => {
     try {
-      const date = new Date(dateString)
-      return new Intl.DateTimeFormat('en-US', { 
-        weekday: 'short',
-        month: 'short', 
-        day: 'numeric',
-        year: 'numeric'
-      }).format(date)
-    } catch (e) {
-      return dateString
+      if (!route || !route.processedStops || route.processedStops.length === 0) {
+        alert("No route data available.");
+        return;
+      }
+
+      // Encode route data
+      const routeData = JSON.stringify({
+        name: route.name,
+        waypoints: route.processedStops,
+      });
+
+      // Open route in a new tab
+      const mapWindow = window.open(`/route-map?data=${encodeURIComponent(routeData)}`, "_blank");
+      if (!mapWindow) {
+        console.error("Popup was blocked. Please allow popups for this site.");
+      }
+    } catch (err) {
+      console.error("Error opening route map:", err);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <header className="bg-white dark:bg-slate-800 shadow-sm">
-        <div className="container mx-auto py-4 px-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary">Worker Dashboard</h1>
-          <div className="flex gap-2">
-            <ThemeToggle />
-            <Link href="/">
-              <Button variant="outline" size="sm">
-                <Home className="h-4 w-4 mr-2" />
-                Home
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button variant="outline" size="sm">
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            </Link>
-          </div>
+      {/* 🔹 Navbar */}
+      <header className="bg-white dark:bg-slate-800 shadow-sm p-4 flex justify-between">
+        <h1 className="text-2xl font-bold text-primary">Worker Dashboard</h1>
+        <div className="flex gap-2">
+          <ThemeToggle />
+          <Link href="/">
+            <Button variant="outline"><Home className="h-4 w-4 mr-2" /> Home</Button>
+          </Link>
         </div>
       </header>
 
+      {/* 🔹 Main Content */}
       <main className="container mx-auto py-8 px-4">
-        <div className="grid grid-cols-1 gap-6">
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Your Schedule</CardTitle>
-                <CardDescription>View your assigned routes and shifts</CardDescription>
-              </div>
-              <Calendar className="h-5 w-5 text-primary" />
+        {/* Error Alert */}
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* 🔹 Worker Details */}
+        {worker && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Worker Information</CardTitle>
+              <CardDescription>Details of the logged-in worker</CardDescription>
             </CardHeader>
             <CardContent>
-              {loading ? (
-                <div className="text-center py-4">Loading your schedule...</div>
-              ) : workerSchedule.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">No schedules assigned to you yet.</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Route</TableHead>
-                      <TableHead>Shift</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {workerSchedule.map((schedule) => {
-                      const route = schedule.optimized_routes
-                      return (
-                        <TableRow key={schedule.id}>
-                          <TableCell>{formatDate(schedule.date)}</TableCell>
-                          <TableCell>
-                            {route?.name || (schedule.route_id ? `Route ${schedule.route_id.substring(0, 8)}` : 'No route assigned')}
-                          </TableCell>
-                          <TableCell>{shifts[schedule.shift as keyof typeof shifts] || schedule.shift}</TableCell>
-                          <TableCell>
-                            {schedule.route_id ? (
-                              <Link href={`/map?route=${schedule.route_id}`}>
-                                <Button variant="outline" size="sm">
-                                  View Route
-                                </Button>
-                              </Link>
-                            ) : (
-                              <Button variant="outline" size="sm" disabled>
-                                No Route
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              )}
+              <p><strong>Name:</strong> {worker.name}</p>
+              <p><strong>Phone Number:</strong> {worker.phone_number}</p>
+              <p><strong>Role:</strong> {worker.role}</p>
             </CardContent>
           </Card>
-        </div>
+        )}
+
+        {/* 🔹 Schedule Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Schedule</CardTitle>
+            <CardDescription>View assigned routes and shifts</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p>Loading schedule...</p>
+            ) : workerSchedule.length === 0 ? (
+              <p>No schedules assigned.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Route</TableHead>
+                    <TableHead>Shift</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {workerSchedule.map((schedule) => (
+                    <TableRow key={schedule.id}>
+                      <TableCell>{schedule.date}</TableCell>
+                      <TableCell>{schedule.optimized_routes?.name || "No route"}</TableCell>
+                      <TableCell>{schedule.shift}</TableCell>
+                      <TableCell>
+                        {schedule.optimized_routes ? (
+                          <Button variant="outline" onClick={() => handleViewRoute(schedule.optimized_routes)}>
+                            View Route
+                          </Button>
+                        ) : (
+                          <Button variant="outline" disabled>No Route</Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   )

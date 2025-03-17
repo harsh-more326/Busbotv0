@@ -71,9 +71,9 @@ const ConfirmationDialog = ({
 export function WorkerManager() {
   const [workers, setWorkers] = useState<Worker[]>([])
   const [name, setName] = useState("")
-  const [email, setEmail] = useState("")
-  const [phone, setPhone] = useState("")
+  const [phoneNumber, setPhoneNumber] = useState("") // Changed from phone to phoneNumber
   const [role, setRole] = useState<string>("") 
+  const [depotId, setDepotId] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [confirmDialog, setConfirmDialog] = useState({
@@ -89,7 +89,6 @@ export function WorkerManager() {
 
   const fetchWorkers = async () => {
     try {
-      // console.log("Fetching workers from database...")
       const { data, error } = await supabase.from("workers").select("*").order("name")
 
       if (error) {
@@ -97,7 +96,6 @@ export function WorkerManager() {
         throw error
       }
       
-      // console.log("Workers fetched successfully:", data)
       setWorkers(data || [])
     } catch (error) {
       console.error("Error fetching workers:", error)
@@ -113,9 +111,9 @@ export function WorkerManager() {
 
   const resetForm = () => {
     setName("")
-    setEmail("")
-    setPhone("")
+    setPhoneNumber("") // Changed from setPhone to setPhoneNumber
     setRole("")
+    setDepotId("")
     setEditingId(null)
   }
 
@@ -123,7 +121,7 @@ export function WorkerManager() {
     e.preventDefault()
 
     // Validate inputs
-    if (!name || !email || !phone || !role) {
+    if (!name || !phoneNumber || !role || !depotId) { // Changed phone to phoneNumber
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -140,9 +138,9 @@ export function WorkerManager() {
         const updatedWorker = {
           id: editingId,
           name,
-          email,
-          phone,
-          role
+          phone_number: phoneNumber, // Changed from phone to phone_number
+          role,
+          depot_id: depotId
         }
         
         console.log(`Updating worker with ID ${editingId} in database...`, updatedWorker)
@@ -151,9 +149,9 @@ export function WorkerManager() {
           .from("workers")
           .update({
             name,
-            email,
-            phone,
+            phone_number: phoneNumber, // Changed from phone to phone_number
             role,
+            depot_id: depotId
           })
           .eq("id", editingId)
 
@@ -180,18 +178,18 @@ export function WorkerManager() {
         // Create new worker
         console.log("Adding new worker to database:", {
           name,
-          email, 
-          phone,
-          role
+          phone_number: phoneNumber, // Changed from phone to phone_number
+          role,
+          depot_id: depotId
         })
         
         const { data, error } = await supabase
           .from("workers")
           .insert({
             name,
-            email,
-            phone,
+            phone_number: phoneNumber, // Changed from phone to phone_number
             role,
+            depot_id: depotId
           })
           .select()
 
@@ -237,9 +235,9 @@ export function WorkerManager() {
     
     // Set form values with worker data
     setName(worker.name)
-    setEmail(worker.email)
-    setPhone(worker.phone || "")  // Handle null phone
-    setRole(worker.role || "") // Set role, default to empty if not present
+    setPhoneNumber(worker.phone_number || "") // Changed from phone to phone_number
+    setRole(worker.role || "")
+    setDepotId(worker.depot_id || "")
     setEditingId(worker.id)
 
     // Scroll to the form
@@ -317,23 +315,22 @@ export function WorkerManager() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="depotId">Depot ID</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="Enter email address"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="depotId"
+                  placeholder="Enter depot ID"
+                  value={depotId}
+                  onChange={(e) => setDepotId(e.target.value)}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phoneNumber">Phone Number</Label>
                 <Input
-                  id="phone"
+                  id="phoneNumber"
                   placeholder="Enter phone number"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
                   required
                 />
               </div>
@@ -397,9 +394,9 @@ export function WorkerManager() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Phone</TableHead>
+                      <TableHead>Phone Number</TableHead>
                       <TableHead>Role</TableHead>
+                      <TableHead>Depot ID</TableHead>
                       <TableHead className="w-[120px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -407,8 +404,7 @@ export function WorkerManager() {
                     {workers.map((worker) => (
                       <TableRow key={worker.id} className={editingId === worker.id ? "bg-muted/50" : ""}>
                         <TableCell>{worker.name}</TableCell>
-                        <TableCell>{worker.email}</TableCell>
-                        <TableCell>{worker.phone}</TableCell>
+                        <TableCell>{worker.phone_number}</TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             worker.role === "Driver" 
@@ -418,6 +414,7 @@ export function WorkerManager() {
                             {worker.role || "Not specified"}
                           </span>
                         </TableCell>
+                        <TableCell>{worker.depot_id || "Not specified"}</TableCell>
                         <TableCell>
                           <div className="flex space-x-1">
                             <Button 

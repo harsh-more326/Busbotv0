@@ -1,519 +1,387 @@
-"use client"
+import React, { useEffect, useState, useRef } from "react";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import L from "leaflet"
-import "leaflet/dist/leaflet.css"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { toast } from "@/components/ui/use-toast"
-import { Toaster } from "@/components/ui/toaster"
-import { Plus, Edit, X, Save } from "lucide-react"
-import type { BusStop } from "@/lib/types"
-import { getBusStops, addBusStop, updateBusStop } from "@/lib/api"
 
-// Fix Leaflet icon issues - moved to utility function to prevent re-creation
-const fixLeafletIcons = () => {
-  delete (L.Icon.Default.prototype as any)._getIconUrl
-
+// Fix Leaflet default icon issues
+const setupLeafletIcons = () => {
+  delete L.Icon.Default.prototype._getIconUrl;
   L.Icon.Default.mergeOptions({
-    iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
     iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
-    shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-  })
-}
+    iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png"
+  });
+};
 
-// Define marker icons centrally to avoid recreating them
-const createMarkerIcons = () => {
-  return {
-    newStop: new L.Icon({
-      iconUrl:
-        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
-      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41],
-    }),
-    existingStop: new L.Icon({
-      iconUrl:
-        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png",
-      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-      iconSize: [20, 32],
-      iconAnchor: [10, 32],
-      popupAnchor: [1, -28],
-      shadowSize: [32, 32],
-    }),
-    editingStop: new L.Icon({
-      iconUrl:
-        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png",
-      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41],
-    })
-  }
-}
 
-interface AdminMapProps {
-  onAddStop: (stop: BusStop) => void
-  onUpdateStop?: (stop: BusStop) => void
-}
-
-export default function AdminMap({ onAddStop, onUpdateStop }: AdminMapProps) {
-  const mapRef = useRef<L.Map | null>(null)
-  const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number } | null>(null)
-  const [name, setName] = useState("")
-  const [priority, setPriority] = useState(1)
-  const [allStops, setAllStops] = useState<BusStop[]>([])
-  const markerRef = useRef<L.Marker | null>(null)
-  const markersLayerRef = useRef<L.LayerGroup | null>(null)
-  const markerIcons = useRef(typeof window !== 'undefined' ? createMarkerIcons() : null)
-  const mapInitializedRef = useRef(false)
-  const stopIdsRef = useRef(new Set<string>())
-  // Debounce timer ref
-  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  // Edit mode state
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [editingStop, setEditingStop] = useState<BusStop | null>(null)
-
-  // Reset form function to avoid duplication
-  const resetForm = useCallback(() => {
-    setName("")
-    setPriority(1)
-    setSelectedLocation(null)
-    setIsEditMode(false)
-    setEditingStop(null)
-
-    // Remove marker
-    if (markerRef.current) {
-      markerRef.current.remove()
-      markerRef.current = null
-    }
-  }, [])
-
-  // Handle map click with debouncing
-  const handleMapClick = useCallback((e: L.LeafletMouseEvent) => {
-    // If we're in edit mode, ignore map clicks
-    if (isEditMode) return
-    
-    // Clear any pending click timeout
-    if (clickTimeoutRef.current) {
-      clearTimeout(clickTimeoutRef.current)
-    }
-    
-    // Set a timeout of 300ms to debounce rapid clicks
-    clickTimeoutRef.current = setTimeout(() => {
-      const lat = e.latlng.lat
-      const lng = e.latlng.lng
-      
-      // Validate coordinates
-      if (isNaN(lat) || isNaN(lng)) {
-        toast({
-          title: "Error",
-          description: "Invalid coordinates selected",
-          variant: "destructive",
-        })
-        return
-      }
-      
-      setSelectedLocation({ latitude: lat, longitude: lng })
-
-      // Remove previous marker if exists
-      if (markerRef.current) {
-        markerRef.current.remove()
-      }
-
-      // Add new marker
-      if (mapRef.current && markerIcons.current) {
-        markerRef.current = L.marker([lat, lng], {
-          icon: markerIcons.current.newStop
-        }).addTo(mapRef.current)
-
-        markerRef.current.bindPopup("New Bus Stop Location").openPopup()
-      }
-    }, 300)
-  }, [isEditMode])
-
-  // Fetch stops once on mount
+  
+// Component to handle map view adjustments
+function MapAdjuster({ bounds }) {
+  const map = useMap();
+  
   useEffect(() => {
-    const fetchStops = async () => {
+    if (bounds && bounds.length > 0) {
+      map.fitBounds(bounds);
+    }
+  }, [bounds, map]);
+  
+  return null;
+}
+
+// Patched version of the Routing Machine component
+function RoutingMachine({ waypoints = [] }) {
+  const map = useMap();
+  const routingControlRef = useRef(null);
+  const routingMachineLoadedRef = useRef(false);
+
+  // Function to safely create a routing control
+  const createRoutingControl = async () => {
+    if (!waypoints || waypoints.length < 2 || !map || !map._loaded) return;
+    
+    try {
+      // Only import once
+      if (!routingMachineLoadedRef.current) {
+        await import("leaflet-routing-machine");
+        routingMachineLoadedRef.current = true;
+        
+        // Apply patch to prevent _clearLines error
+        // This is the key fix: we're patching the _clearLines method in L.Routing.Line.prototype
+        const originalClearLines = L.Routing.Line.prototype._clearLines;
+        L.Routing.Line.prototype._clearLines = function() {
+          try {
+            if (this._routes && this._map) {
+              originalClearLines.apply(this, arguments);
+            }
+          } catch (e) {
+            console.log("Prevented _clearLines error");
+          }
+        };
+      }
+      
+      // Safely remove any existing control
+      if (routingControlRef.current) {
+        try {
+          map.removeControl(routingControlRef.current);
+        } catch (e) {
+          console.log("Error removing routing control:", e);
+        }
+        routingControlRef.current = null;
+      }
+      
+      // Create new waypoints
+      const routeWaypoints = waypoints.map(point => L.latLng(point.lat, point.lng));
+      
+      // Create the routing control with error handling
+      const routingControl = L.Routing.control({
+        waypoints: routeWaypoints,
+        lineOptions: { 
+          styles: [{ color: "#6FA1EC", weight: 4 }],
+          missingRouteStyles: [{ color: "#CCCCCC", opacity: 0.8, weight: 3 }]
+        },
+        addWaypoints: false,
+        routeWhileDragging: false,
+        fitSelectedRoutes: false,
+        showAlternatives: false,
+        show: false, // Hide the instructions panel
+        createMarker: () => null // Use our own markers
+      });
+      
+      // Add the control to the map
+      routingControl.addTo(map);
+      routingControlRef.current = routingControl;
+      
+      // Handle route calculation errors
+      routingControl.on('routingerror', function(e) {
+        console.log('Routing error:', e.error);
+      });
+      
+    } catch (error) {
+      console.error("Error setting up routing:", error);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    // Create the routing control with a small delay to ensure the map is ready
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        createRoutingControl();
+      }
+    }, 100);
+    
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+      
+      // Safe cleanup
+      if (routingControlRef.current && map && map._loaded) {
+        try {
+          map.removeControl(routingControlRef.current);
+        } catch (e) {
+          console.log("Error during cleanup:", e);
+        }
+        routingControlRef.current = null;
+      }
+    };
+  }, [map, waypoints]);
+
+  return null;
+}
+
+const AdminMap = () => {
+  const [allWaypoints, setAllWaypoints] = useState([]);
+  const [displayWaypoints, setDisplayWaypoints] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
+  const [error, setError] = useState(null);
+  const [chunkIndex, setChunkIndex] = useState(0);
+  const [bounds, setBounds] = useState(null);
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
+  const [routeProgress, setRouteProgress] = useState(0);
+  // Number of waypoints to display at once
+  const CHUNK_SIZE = 15; // Reduced for better routing performance
+  
+  const handleGenerateRoutes = async () => {
+    setLoadingRoutes(true);
+    setRouteProgress(0);
+    
+    try {
+      // Start progress animation
+      const progressInterval = setInterval(() => {
+        setRouteProgress(prev => {
+          // Slowly increase progress up to 90% while waiting for API
+          if (prev < 90) {
+            return prev + (Math.random() * 3);
+          }
+          return prev;
+        });
+      }, 300);
+      setRouteProgress(10);
+      
+      const response = await fetch(
+        "https://lkh3-service-431706900070.asia-south1.run.app/optimize"
+      );
+      if (!response.ok) throw new Error("Failed to fetch optimized routes");
+      setRouteProgress(85);
+      await response.json();
+      clearInterval(progressInterval);
+      
+      // Set progress to 100% when complete
+      setRouteProgress(100);
+
+      
+      // Success message
+      setTimeout(() => {
+        alert("Routes have been optimized successfully!");
+      }, 500);
+      
+    } catch (error) {
+      console.error("Error fetching optimized routes:", error);
+      alert("Error optimizing routes: " + error.message);
+    } finally {
+      // Reset after a delay to show the completed progress bar
+      setTimeout(() => {
+        setLoadingRoutes(false);
+        setRouteProgress(0);
+        window.location.reload();
+      }, 1000);
+    }
+  };
+
+  
+  useEffect(() => {
+    // Setup Leaflet icons only on client-side
+    if (typeof window !== "undefined") {
+      setupLeafletIcons();
+      setMapReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchRoutes = async () => {
+      setLoading(true);
+      setError(null);
+      
       try {
-        const stops = await getBusStops()
-        setAllStops(stops)
+        const response = await fetch("/api/optimized-routes/");
+        if (!response.ok) throw new Error("Failed to fetch routes");
+        const data = await response.json();
         
-        // Initialize stopIdsRef with existing stop IDs
-        stopIdsRef.current = new Set(stops.map(stop => stop.id))
+        // Handle the single object with waypoints array structure
+        if (data && Array.isArray(data.waypoints) && data.waypoints.length > 0) {
+          // Filter out any invalid waypoints
+          const validWaypoints = data.waypoints.filter(wp => 
+            wp && typeof wp === 'object' && 
+            typeof wp.lat === 'number' && 
+            typeof wp.lng === 'number'
+          );
+          
+          setAllWaypoints(validWaypoints);
+          
+          // Calculate bounds for the first chunk
+          if (validWaypoints.length > 0) {
+            const firstChunkWaypoints = validWaypoints.slice(0, CHUNK_SIZE);
+            
+            // Set initial waypoints
+            setDisplayWaypoints(firstChunkWaypoints);
+            
+            // Create bounds for the map
+            const latLngs = firstChunkWaypoints.map(wp => [wp.lat, wp.lng]);
+            setBounds(latLngs);
+          } else {
+            setError("No valid waypoints found in the data");
+          }
+        } else {
+          setError("Invalid data structure received from API");
+          setAllWaypoints([]);
+          setDisplayWaypoints([]);
+        }
       } catch (error) {
-        console.error("Error fetching bus stops:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load existing bus stops",
-          variant: "destructive",
-        })
+        console.error("Error fetching routes:", error);
+        setError(`Error fetching routes: ${error.message}`);
+        setAllWaypoints([]);
+        setDisplayWaypoints([]);
+      } finally {
+        setLoading(false);
       }
+    };
+
+    if (mapReady) {
+      fetchRoutes();
+    }
+  }, [mapReady]);
+
+  // Handle chunk navigation with proper cleanup
+  const navigateChunk = (direction) => {
+    const maxChunks = Math.ceil(allWaypoints.length / CHUNK_SIZE);
+    let newIndex;
+    
+    if (direction === 'next') {
+      newIndex = (chunkIndex + 1) % maxChunks;
+    } else {
+      newIndex = (chunkIndex - 1 + maxChunks) % maxChunks;
     }
     
-    fetchStops()
+    // Clear current waypoints first
+    setDisplayWaypoints([]);
     
-    // Cleanup timeout on unmount
-    return () => {
-      if (clickTimeoutRef.current) {
-        clearTimeout(clickTimeoutRef.current)
-      }
-    }
-  }, [])
-
-  // Initialize map
-  useEffect(() => {
-    // Make sure we only initialize the map once and only on the client side
-    if (typeof window !== 'undefined' && !mapRef.current && !mapInitializedRef.current) {
-      fixLeafletIcons()
-      mapInitializedRef.current = true
-
-      // Create a markers layer group to manage all markers
-      const markersLayer = L.layerGroup()
-      markersLayerRef.current = markersLayer
+    // Wait for cleanup to complete
+    setTimeout(() => {
+      setChunkIndex(newIndex);
       
-      // Center on Mumbai
-      const map = L.map("admin-map").setView([19.076, 72.8777], 11)
-
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19,
-      }).addTo(map)
+      // Update waypoints with the new chunk
+      const startIdx = newIndex * CHUNK_SIZE;
+      const nextChunk = allWaypoints.slice(startIdx, startIdx + CHUNK_SIZE);
+      setDisplayWaypoints(nextChunk);
       
-      // Add markers layer to map
-      markersLayer.addTo(map)
+      // Create bounds for the map
+      const latLngs = nextChunk.map(wp => [wp.lat, wp.lng]);
+      setBounds(latLngs);
+    }, 300);
+  };
 
-      // Add click event to map with the debounced handler
-      map.on("click", handleMapClick)
+  const mapCenter = displayWaypoints.length > 0 
+    ? [displayWaypoints[0].lat, displayWaypoints[0].lng] 
+    : [19.22, 72.87];
 
-      mapRef.current = map
-    }
+  const totalChunks = Math.ceil(allWaypoints.length / CHUNK_SIZE);
 
-    // Clean up function
-    return () => {
-      if (mapRef.current) {
-        // Remove click handler first
-        mapRef.current.off("click", handleMapClick)
-        // Then remove the map
-        mapRef.current.remove()
-        mapRef.current = null
-        mapInitializedRef.current = false
-      }
-      
-      // Clear marker reference
-      if (markerRef.current) {
-        markerRef.current = null
-      }
-      
-      // Clear markers layer reference
-      if (markersLayerRef.current) {
-        markersLayerRef.current = null
-      }
-    }
-  }, [handleMapClick]) // Include handleMapClick in dependencies
-
-  // Handle bus stop click for editing
-  const handleBusStopClick = useCallback((stop: BusStop) => {
-    // If already in edit mode, finish that first
-    if (isEditMode) {
-      toast({
-        title: "Warning",
-        description: "Please finish editing the current bus stop first",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Set edit mode
-    setIsEditMode(true)
-    setEditingStop(stop)
-    
-    // Fill form with stop data
-    setName(stop.name)
-    setPriority(stop.priority)
-    setSelectedLocation({ latitude: stop.latitude, longitude: stop.longitude })
-
-    // Remove previous marker if exists
-    if (markerRef.current) {
-      markerRef.current.remove()
-    }
-
-    // Add editing marker
-    if (mapRef.current && markerIcons.current) {
-      markerRef.current = L.marker([stop.latitude, stop.longitude], {
-        icon: markerIcons.current.editingStop
-      }).addTo(mapRef.current)
-
-      markerRef.current.bindPopup(`Editing: ${stop.name}`).openPopup()
-    }
-  }, [isEditMode])
-
-  // Update markers when allStops changes or when map is initialized
-  useEffect(() => {
-    if (!mapRef.current || !markersLayerRef.current || !markerIcons.current) {
-      return; // Exit if map or markers layer isn't initialized yet
-    }
-    
-    // Clear existing markers
-    markersLayerRef.current.clearLayers()
-    
-    // Add all existing bus stops to the map
-    allStops.forEach((stop) => {
-      // Check if latitude and longitude exist and are valid numbers
-      if (
-        stop && 
-        typeof stop.latitude === 'number' && 
-        typeof stop.longitude === 'number' && 
-        !isNaN(stop.latitude) && 
-        !isNaN(stop.longitude)
-      ) {
-        const marker = L.marker([stop.latitude, stop.longitude], {
-          icon: markerIcons.current!.existingStop
-        })
-
-        // Create popup content
-        const popupContent = document.createElement('div')
-        popupContent.innerHTML = `
-          <strong>${stop.name}</strong><br>
-          Priority: ${stop.priority}<br>
-        `
-        
-        // Add edit button to popup
-        const editButton = document.createElement('button')
-        editButton.innerText = 'Edit'
-        editButton.className = 'mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs'
-        editButton.onclick = () => handleBusStopClick(stop)
-        popupContent.appendChild(editButton)
-        
-        marker.bindPopup(popupContent)
-        markersLayerRef.current!.addLayer(marker)
-      } else {
-        console.warn("Skipping invalid bus stop:", stop)
-      }
-    })
-  }, [allStops, handleBusStopClick])
-
-  const handleAddStop = async () => {
-    if (!selectedLocation) {
-      toast({
-        title: "Error",
-        description: "Please select a location on the map",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!name) {
-      toast({
-        title: "Error",
-        description: "Please enter a name for the bus stop",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const now = new Date().toISOString();
-      
-      // Only include fields that are definitely in your database schema
-      // Remove address, city, zipCode that caused the 400 error
-      const newStop = {
-        name,
-        latitude: selectedLocation.latitude,
-        longitude: selectedLocation.longitude,
-        priority,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-        notes: "",
-        // Remove these fields as they don't exist in your schema
-        // address: "", 
-        // city: "",
-        // zipCode: "",
-      }
-
-      const addedStop = await addBusStop(newStop)
-
-      // Update local state
-      setAllStops((prevStops) => [...prevStops, addedStop])
-      
-      // Track the new stop ID
-      if (addedStop.id) {
-        stopIdsRef.current.add(addedStop.id)
-      }
-
-      // Call the parent component's onAddStop
-      onAddStop(addedStop)
-
-      // Reset form using the consolidated function
-      resetForm()
-
-      toast({
-        title: "Success",
-        description: "Bus stop added successfully",
-      })
-    } catch (error) {
-      console.error("Error adding bus stop:", error)
-      toast({
-        title: "Error",
-        description: "Failed to add bus stop. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleUpdateStop = async () => {
-    if (!editingStop || !selectedLocation) {
-      toast({
-        title: "Error",
-        description: "No stop selected for editing",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!name) {
-      toast({
-        title: "Error",
-        description: "Please enter a name for the bus stop",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const now = new Date().toISOString();
-      
-      // Create a new object with only the fields from the original stop
-      // to avoid sending fields that don't exist in the database
-      const updatedStop = {
-        ...editingStop,
-        name,
-        latitude: selectedLocation.latitude,
-        longitude: selectedLocation.longitude,
-        priority,
-        updatedAt: now,
-      }
-
-      // Remove any fields that might not be in the database
-      // If these fields don't exist in your schema, delete them
-      // delete updatedStop.address;
-      // delete updatedStop.city;
-      // delete updatedStop.zipCode;
-
-      // Call API to update bus stop
-      const result = await updateBusStop(updatedStop)
-
-      // Update local state
-      setAllStops((prevStops) => 
-        prevStops.map(stop => 
-          stop.id === result.id ? result : stop
-        )
-      )
-      
-      // Call the parent component's onUpdateStop if provided
-      if (onUpdateStop) {
-        onUpdateStop(result)
-      }
-
-      // Reset form using the consolidated function
-      resetForm()
-
-      toast({
-        title: "Success",
-        description: "Bus stop updated successfully",
-      })
-    } catch (error) {
-      console.error("Error updating bus stop:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update bus stop. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleCancelEdit = () => {
-    resetForm()
-    toast({
-      title: "Edit Cancelled",
-      description: "No changes were made to the bus stop",
-    })
+  if (!mapReady) {
+    return <div>Initializing map...</div>;
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {isEditMode 
-              ? `Edit Bus Stop: ${editingStop?.name}` 
-              : "Add Bus Stop by Clicking on Map"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[400px] relative rounded-md overflow-hidden border mb-4">
-            <div id="admin-map" className="w-full h-full" />
+    <div className="admin-map-container">
+      {loading ? (
+        <div className="flex justify-center items-center h-screen">
+        <p className="text-lg font-semibold text-white">Loading routes...</p>
+      </div>
+      ) : error ? (
+        <div className="error-message p-4 bg-red-100 text-red-700 rounded">
+          {error}
+        </div>
+      ) : (
+        <>
+          <div className="route-controls flex items-center justify-center mb-4">
+            <button 
+              onClick={() => navigateChunk('prev')} 
+              disabled={totalChunks <= 1}
+              className="px-4 py-2 mr-2 border-2 bg-jaguar-200 rounded-[10px] disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="mx-2">
+              Showing waypoints {chunkIndex * CHUNK_SIZE + 1} to {Math.min((chunkIndex + 1) * CHUNK_SIZE, allWaypoints.length)} of {allWaypoints.length}
+              {totalChunks > 1 ? ` (${chunkIndex + 1}/${totalChunks})` : ''}
+            </span>
+            <button 
+              onClick={() => navigateChunk('next')} 
+              disabled={totalChunks <= 1}
+              className="px-4 py-2 ml-2 border-2 bg-jaguar-200 rounded-[10px] disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
-
-          {selectedLocation && (
-            <div className="space-y-4 p-4 border rounded-md bg-slate-50">
-              <div className="text-sm text-muted-foreground mb-2">
-                Selected Location: {selectedLocation.latitude.toFixed(6)}, {selectedLocation.longitude.toFixed(6)}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Stop Name *</Label>
-                  <Input
-                    id="name"
-                    placeholder="Enter stop name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
+  
+          <div>
+            <MapContainer 
+              center={mapCenter} 
+              zoom={12} 
+              style={{ height: "500px", width: "100%" }}
+            >
+              <TileLayer 
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+                attribution="&copy; OpenStreetMap contributors" 
+              />
+  
+              {displayWaypoints.length > 0 && 
+                displayWaypoints.map((stop, index) => (
+                  <Marker 
+                    key={`marker-${chunkIndex}-${index}`} 
+                    position={[stop.lat, stop.lng]}
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="priority">Priority (1-10)</Label>
-                  <Input
-                    id="priority"
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={priority}
-                    onChange={(e) => setPriority(parseInt(e.target.value) || 1)}
-                  />
-                </div>
-              </div>
-
-              {isEditMode ? (
-                <div className="flex space-x-2">
-                  <Button onClick={handleUpdateStop} className="flex-1">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </Button>
-                  <Button onClick={handleCancelEdit} variant="outline" className="flex-1">
-                    <X className="h-4 w-4 mr-2" />
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button onClick={handleAddStop} className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Bus Stop
-                </Button>
+                ))
+              }
+  
+              {displayWaypoints.length > 1 && (
+                <RoutingMachine waypoints={displayWaypoints} />
               )}
+  
+              {bounds && bounds.length > 0 && (
+                <MapAdjuster bounds={bounds} />
+              )}
+            </MapContainer>
+          </div>
+        </>
+      )}
+       <div className="p-4 flex flex-col items-center justify-center">
+        <button
+          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded font-semibold text-lg transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center w-64"
+          onClick={handleGenerateRoutes}
+          disabled={loadingRoutes}
+        >
+          {loadingRoutes ? "Optimizing Routes..." : "Generate Optimized Routes"}
+        </button>
+
+        {loadingRoutes && (
+          <div className="mt-4 w-full max-w-lg">
+            <div className="bg-gray-200 rounded-full h-4 w-full overflow-hidden">
+              <div
+                className="h-full bg-blue-600 rounded-full transition-all duration-300 flex items-center justify-center"
+                style={{ width: `${routeProgress}%` }}
+              ></div>
             </div>
-          )}
-        </CardContent>
-      </Card>
-      <Toaster />
+            <div className="text-center mt-2 text-sm font-medium text-gray-700">
+              {Math.round(routeProgress)}% Complete
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-  )
-}
+  );
+};
+
+export default AdminMap;
