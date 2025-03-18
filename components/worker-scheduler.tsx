@@ -30,9 +30,9 @@ export function WorkerScheduler() {
   const [loading, setLoading] = useState(true)
 
   const shifts = [
-    { id: "morning", name: "Morning (6:00 AM - 2:00 PM)" },
-    { id: "afternoon", name: "Afternoon (2:00 PM - 10:00 PM)" },
-    { id: "night", name: "Night (10:00 PM - 1:00 AM)" },
+    { id: "Morning(6:00 - 2:00 PM)", name: "Morning (6:00 AM - 2:00 PM)" },
+    { id: "Afternoon (2:00 - 10:00 PM)", name: "Afternoon (2:00 PM - 10:00 PM)" },
+    { id: "Night (10:00 - 1:00 AM)", name: "Night (10:00 PM - 1:00 AM)" },
   ]
 
   useEffect(() => {

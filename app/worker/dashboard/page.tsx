@@ -31,7 +31,7 @@ export default function WorkerDashboard() {
     const fetchWorkerDetails = async () => {
       setError(null)
 
-      // 🔹 Fetch worker details using workerId
+      // 🔹 Fetch worker details
       const { data: workerData, error: workerError } = await supabase
         .from("workers")
         .select("id, name, phone_number, role")
@@ -54,7 +54,7 @@ export default function WorkerDashboard() {
       try {
         const { data, error } = await supabase
           .from("schedule")
-          .select("*, optimized_routes(*)")
+          .select("*, optimized_routes(*, depots:depot_id(name)), routes:route_id(*, stops)") // 🔹 Fetch route and depot name
           .eq("worker_id", workerId)
           .order("date")
 
@@ -78,7 +78,7 @@ export default function WorkerDashboard() {
   // 🔹 Handle View Route Function
   const handleViewRoute = (route) => {
     try {
-      if (!route || !route.processedStops || route.processedStops.length === 0) {
+      if (!route || !route.stops || route.stops.length === 0) {
         alert("No route data available.");
         return;
       }
@@ -86,7 +86,7 @@ export default function WorkerDashboard() {
       // Encode route data
       const routeData = JSON.stringify({
         name: route.name,
-        waypoints: route.processedStops,
+        waypoints: route.stops,
       });
 
       // Open route in a new tab
@@ -154,6 +154,7 @@ export default function WorkerDashboard() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Route</TableHead>
+                    <TableHead>Depot</TableHead>
                     <TableHead>Shift</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -162,11 +163,12 @@ export default function WorkerDashboard() {
                   {workerSchedule.map((schedule) => (
                     <TableRow key={schedule.id}>
                       <TableCell>{schedule.date}</TableCell>
-                      <TableCell>{schedule.optimized_routes?.name || "No route"}</TableCell>
+                      <TableCell>{schedule.routes?.name || "No route"}</TableCell>
+                      <TableCell>{schedule.optimized_routes?.depots?.name || "Unknown"}</TableCell>
                       <TableCell>{schedule.shift}</TableCell>
                       <TableCell>
-                        {schedule.optimized_routes ? (
-                          <Button variant="outline" onClick={() => handleViewRoute(schedule.optimized_routes)}>
+                        {schedule.routes ? (
+                          <Button variant="outline" onClick={() => handleViewRoute(schedule.routes)}>
                             View Route
                           </Button>
                         ) : (

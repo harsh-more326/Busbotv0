@@ -150,7 +150,7 @@ export default function LoginPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="worker-password">UUID (Password)</Label>
+                          <Label htmlFor="worker-password">Password</Label>
                           <Input
                             id="worker-password"
                             type="password"
